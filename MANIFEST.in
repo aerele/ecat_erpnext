@@ -1,0 +1,18 @@
+include MANIFEST.in
+include requirements.txt
+include *.json
+include *.md
+include *.py
+include *.txt
+recursive-include tacten_vending_machine *.css
+recursive-include tacten_vending_machine *.csv
+recursive-include tacten_vending_machine *.html
+recursive-include tacten_vending_machine *.ico
+recursive-include tacten_vending_machine *.js
+recursive-include tacten_vending_machine *.json
+recursive-include tacten_vending_machine *.md
+recursive-include tacten_vending_machine *.png
+recursive-include tacten_vending_machine *.py
+recursive-include tacten_vending_machine *.svg
+recursive-include tacten_vending_machine *.txt
+recursive-exclude tacten_vending_machine *.pyc
