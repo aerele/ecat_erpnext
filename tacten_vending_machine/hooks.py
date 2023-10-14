@@ -29,7 +29,9 @@ app_license = "MIT"
 # page_js = {"page" : "public/js/file.js"}
 
 # include js in doctype views
-# doctype_js = {"doctype" : "public/js/doctype.js"}
+doctype_js = {
+	"quotation" : "tacten_vending_machine/client_scripts/quotation.js"
+}
 # doctype_list_js = {"doctype" : "public/js/doctype_list.js"}
 # doctype_tree_js = {"doctype" : "public/js/doctype_tree.js"}
 # doctype_calendar_js = {"doctype" : "public/js/doctype_calendar.js"}
@@ -118,34 +120,44 @@ app_license = "MIT"
 # ---------------
 # Hook on document methods and events
 
-# doc_events = {
-#	"*": {
-#		"on_update": "method",
-#		"on_cancel": "method",
-#		"on_trash": "method"
-#	}
-# }
+doc_events = {
+	"Contract": {
+		"before_save": "tacten_vending_machine.doc_events.contract_before_save",
+	},
+	"Quotation":{
+		"before_save":"tacten_vending_machine.doc_events.qtn_before_save"
+	},
+	"Purchase Order":{
+		"before_save":"tacten_vending_machine.doc_events.po_before_save"
+	},
+    "Sales Invoice":{
+        "before_save":"tacten_vending_machine.doc_events.si_before_save"
+	}
+}
 
 # Scheduled Tasks
 # ---------------
 
-# scheduler_events = {
-#	"all": [
-#		"tacten_vending_machine.tasks.all"
-#	],
-#	"daily": [
-#		"tacten_vending_machine.tasks.daily"
-#	],
-#	"hourly": [
-#		"tacten_vending_machine.tasks.hourly"
-#	],
-#	"weekly": [
-#		"tacten_vending_machine.tasks.weekly"
-#	],
-#	"monthly": [
-#		"tacten_vending_machine.tasks.monthly"
-#	],
-# }
+scheduler_events = {
+	"daily" : [
+		"tacten_vending_machine.doc_events.set_carry_fwd_qty_in_pkg"
+	]
+	# "all": [
+	# 	"tacten_vending_machine.tasks.all"
+	# ],
+	# "daily": [
+	# 	"tacten_vending_machine.tasks.daily"
+	# ],
+	# "hourly": [
+	# 	"tacten_vending_machine.tasks.hourly"
+	# ],
+	# "weekly": [
+	# 	"tacten_vending_machine.tasks.weekly"
+	# ],
+	# "monthly": [
+	# 	"tacten_vending_machine.tasks.monthly"
+	# ],
+}
 
 # Testing
 # -------
