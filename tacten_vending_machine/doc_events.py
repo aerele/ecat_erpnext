@@ -142,23 +142,30 @@ def si_before_save(self,method):
 			self.append("items",extra_row)
 	elif doc.custom_billing_type == "Package Based Billing":
 		item_list = {}
+		total_amt = 0
 		non_package_items = []
 		extra_qty_items = {}
-		less_qty_items = []
 		package_items = frappe.db.get_list("Package Definition",{"parent":doc.name},pluck="item")
 		for item in self.items:
-			if not item.item_code in item_list:
-				item_list[item.item_code] = item.qty
-			else:
-				item_list[item.item_code] += item.qty
+			if not item.item_code in item_list and item.item_code in package_items:
+				item_list[item.item_code] = {"qty":item.qty,"amount":item.amount}
+				total_amt += item.amount
+			elif item.item_code in item_list and item.item_code in package_items:
+				item_list[item.item_code]["qty"] += item.qty
+				item_list[item.item_code]["amount"] += item.amount
+				total_amt += item.amount
 			if item.item_code not in package_items and item.item_group!="Coffee Vending Machine":
 				non_package_items.append(item.item_code)
+		if not total_amt >= doc.custom_package_rate:
+			for item in self.items:
+				if item.item_group == "Coffee Vending Machine":
+					item.rate = doc.custom_noncompliance_rental_amount
+					item.amount = doc.custom_noncompliance_rental_amount*item.qty
 		if len(non_package_items):
-			frappe.msgprint("Invoice consists of non - package items:<br>{0}".format(", ".join(["{0}".format(f) for f in non_package_items])))
+			frappe.msgprint("Invoice consists of non - package items:<br>{0}".format(", ".join(["<b>{0}</b>".format(f) for f in non_package_items])))
 		for contract in doc.custom_package_definition:
-			if contract.item in item_list and item_list[contract.item] > (contract.qty+contract.carry_forwarded_qty):
-				extra_qty_items[contract.item] = {"additional_qty":item_list[contract.item]-(contract.qty+contract.carry_forwarded_qty)}
-		print(extra_qty_items)
+			if contract.item in item_list and item_list[contract.item]["qty"] > (contract.qty+contract.carry_forwarded_qty):
+				extra_qty_items[contract.item] = {"additional_qty":item_list[contract.item]["qty"]-(contract.qty+contract.carry_forwarded_qty)}
 		if len(extra_qty_items):
 			frappe.msgprint("Invoice consists of items with additional package quantities:<br>{0}".format("<br>".join(["<b>{0}</b> - <b>{1} units</b>".format(f,extra_qty_items[f]["additional_qty"]) for f in extra_qty_items])))
 	super(SalesInvoice, self).validate()
@@ -174,9 +181,9 @@ def get_date_of_day(year, month, target_day):
 		return "Invalid date"
 
 def set_carry_fwd_qty_in_pkg():
-	# frst_month = datetime.now()
-	# if not frst_month.day == 1:
-	# 	return
+	frst_month = datetime.now()
+	if not frst_month.day == 1:
+		return
 	contract_list = frappe.db.get_list("Contract",{"custom_billing_type":"Package Based Billing","is_signed":1,"docstatus":1,"start_date":["<=",today()],"end_date":[">=",today()]},pluck="name")
 	for contract in contract_list:
 		doc = frappe.get_doc("Contract",contract)
@@ -186,18 +193,14 @@ def set_carry_fwd_qty_in_pkg():
 		month = datetime.strptime(today(), "%Y-%m-%d").month-1
 		end_date = get_date_of_day(year,month,cycle_day)
 		start_date = add_days(end_date,-29)
-		print(start_date,end_date)
 		pkg_items = frappe.db.get_list("Package Definition",{"parent":contract},pluck="item")
-		print(pkg_items)
 		data = frappe.db.sql('''select di.item_code as item,sum(di.qty) as qty from `tabDelivery Note` as d join `tabDelivery Note Item` as di on di.parent=d.name where d.posting_date >= '{0}' and d.posting_date <= '{1}' and 
 		d.docstatus = 1 and d.customer = '{2}' and di.item_code in ({3}) group by di.item_code '''.format(start_date,end_date,doc.party_name,",".join("'{0}'".format(f) for f in pkg_items)),as_dict = 1)
 		# pkg_details = frappe.db.get_list("Package Definition",{"parent":contract},["item","qty","carry_forwarded_qty"])
-		print(data)
 		for pkg_item in doc.custom_package_definition:
 			for item in data:
-				if item["item"] == pkg_item.item and item["qty"] < pkg_item.qty:
-					cfq = pkg_item.carry_forwarded_qty + (pkg_item.qty-item["qty"])
-					print("carry fwd qty: ",cfq)
+				if item["item"] == pkg_item.item and item["qty"] < (pkg_item.qty+pkg_item.carry_forwarded_qty):
+					cfq = (pkg_item.qty+pkg_item.carry_forwarded_qty)-item["qty"]
 					frappe.db.sql('''update `tabPackage Definition` set carry_forwarded_qty = {0} where parent = '{1}' and item = '{2}' '''.format(cfq,contract,pkg_item.item))
 					frappe.db.commit()
 					break
