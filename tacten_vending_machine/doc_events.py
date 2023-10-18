@@ -73,9 +73,10 @@ def po_before_save(self,method):
 		item.custom_tax_amount = item.amount * item.custom_tax_rate / 100
 
 def si_before_save(self,method):
-	contracts = frappe.db.get_value("Contract",{"start_date":["<=",self.posting_date],"end_date":[">=",self.posting_date],"party_name":self.customer,"is_signed":1,"docstatus":1})
-	if not contracts:
-		return
+	if not self.custom_contract:
+		frappe.throw("Select Contract in this Invoice")
+	contracts = self.custom_contract
+	# contracts = frappe.db.get_value("Contract",{"start_date":["<=",self.posting_date],"end_date":[">=",self.posting_date],"party_name":self.customer,"is_signed":1,"docstatus":1})
 	doc = frappe.get_doc("Contract",contracts)
 	if not doc.custom_is_monthly_billing:
 		frappe.throw("Please set Monthly Billing period in Contract to bill")
@@ -129,8 +130,6 @@ def si_before_save(self,method):
 					extra_row = item.as_dict()
 					item.qty = orig_qty
 					item.rate = rental_rate_in
-
-					
 		if is_in_range_partial and orig_qty!=machine_qty:
 			del extra_row["name"]
 			del extra_row["modified"]
@@ -168,6 +167,49 @@ def si_before_save(self,method):
 				extra_qty_items[contract.item] = {"additional_qty":item_list[contract.item]["qty"]-(contract.qty+contract.carry_forwarded_qty)}
 		if len(extra_qty_items):
 			frappe.msgprint("Invoice consists of items with additional package quantities:<br>{0}".format("<br>".join(["<b>{0}</b> - <b>{1} units</b>".format(f,extra_qty_items[f]["additional_qty"]) for f in extra_qty_items])))
+	elif doc.custom_billing_type == "Cup Based Billing":
+		item_list = {}
+		cup_items = frappe.db.get_list("Cup Definition" ,{"parent":doc.name},pluck="cup_name")
+		for item in self.items:
+			if not item.item_code in item_list and item.item_code not in cup_items:
+				item_list[item.item_code] = {"qty":item.qty,"rate":item.rate,"item_name":item.item_name,"description":item.description,"uom":item.uom,"income_account":item.income_account,"expense_account":item.expense_account,"warehouse":item.warehouse,"batch_no":item.batch_no}
+			elif item.item_code in item_list and item.item_code not in cup_items:
+				item_list[item.item_code]["qty"] += item.qty
+		pb_items = frappe.db.sql('''select pb.parent as cup_name,pb.item_code as item,pb.qty as qty from `tabProduct Bundle Item` as pb join `tabCup Definition` as cd on cd.cup_name = pb.parent where cd.parent = '{0}' '''.format(doc.name),as_dict=1)
+		pb_final = {}
+		for pb in pb_items:
+			for cup in self.items:
+				if cup.item_code in cup_items and cup.item_code == pb["cup_name"]:
+					pb["qty"] = pb["qty"]*cup.qty
+					if pb["item"] in pb_final:
+						pb_final[pb["item"]] += pb["qty"]
+					else:
+						pb_final[pb["item"]] = pb["qty"]
+		bundle_less_qty =  {}
+		without_bundle_items = []
+		for item in pb_final:
+			if item in item_list:
+				if item_list[item]["qty"] >= pb_final[item]:
+					item_list[item]["qty"] = item_list[item]["qty"]-pb_final[item]
+				elif item_list[item]["qty"] < pb_final[item]:
+					bundle_less_qty[item] = pb_final[item]-item_list[item]["qty"]
+			else:
+				without_bundle_items.append(item)
+		if bundle_less_qty:
+			frappe.msgprint("Additional {0} needed".format(','.join(["<b>{0}</b> units of Constituent <b>{1}</b>".format(bundle_less_qty[q],q) for q in bundle_less_qty])))
+		if len(without_bundle_items):
+			frappe.throw("Cup Constituents not found<br>{0}".format(",".join(["<b>{0}</b>".format(con) for con in without_bundle_items])))
+		del_item = []
+		for item in self.items:
+			if item.item_code not in cup_items:
+				del_item.append(item)
+		for i in del_item:
+			self.items.remove(i)
+		for key,val in item_list.items():
+			if not val["qty"]:
+				continue
+			item_list[key]["item_code"] = key
+			self.append("items",val)
 	super(SalesInvoice, self).validate()
 
 def get_date_of_day(year, month, target_day):

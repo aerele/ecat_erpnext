@@ -30,7 +30,8 @@ app_license = "MIT"
 
 # include js in doctype views
 doctype_js = {
-	"quotation" : "tacten_vending_machine/client_scripts/quotation.js"
+	"Quotation" : "tacten_vending_machine/client_scripts/quotation.js",
+	"Sales Invoice":"tacten_vending_machine/client_scripts/sales_invoice.js"
 }
 # doctype_list_js = {"doctype" : "public/js/doctype_list.js"}
 # doctype_tree_js = {"doctype" : "public/js/doctype_tree.js"}
@@ -130,8 +131,8 @@ doc_events = {
 	"Purchase Order":{
 		"before_save":"tacten_vending_machine.doc_events.po_before_save"
 	},
-    "Sales Invoice":{
-        "before_save":"tacten_vending_machine.doc_events.si_before_save"
+	"Sales Invoice":{
+		"before_save":"tacten_vending_machine.doc_events.si_before_save"
 	}
 }
 
