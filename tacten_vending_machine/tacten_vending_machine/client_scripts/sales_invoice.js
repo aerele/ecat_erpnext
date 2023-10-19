@@ -12,6 +12,42 @@ frappe.ui.form.on('Sales Invoice', {
 			};
 		});
 	},
+	refresh:function(frm){
+		setTimeout(() => {
+			cur_frm.page.remove_inner_button("Delivery Note","Get Items From")
+			cur_frm.add_custom_button("Delivery Note",
+			function() {
+				if(!frm.doc.custom_contract){
+					frappe.throw("Select Contract to fetch Delivery Notes")
+				}
+				erpnext.utils.map_current_doc({
+					method: "erpnext.stock.doctype.delivery_note.delivery_note.make_sales_invoice",
+					source_doctype: "Delivery Note",
+					target: me.frm,
+					date_field: "posting_date",
+					setters: {
+						customer: me.frm.doc.customer || undefined
+					},
+					get_query: function() {
+						var filters = {
+							docstatus: 1,
+							company: me.frm.doc.company,
+							posting_date:me.frm.doc.posting_date,
+							contract:me.frm.doc.custom_contract,
+							is_return: 0
+						};
+						if(me.frm.doc.customer) filters["customer"] = me.frm.doc.customer;
+						return {
+							query: "tacten_vending_machine.doc_events.fetch_delivery_notes",
+							filters: filters
+						};
+					}
+				});
+			},"Get Items From")
+		},1000)
+
+		
+	},
 	custom_contract:function(frm){
 		if(frm.doc.custom_contract){
 			frappe.db.get_list(

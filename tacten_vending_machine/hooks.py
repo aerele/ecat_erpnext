@@ -31,7 +31,8 @@ app_license = "MIT"
 # include js in doctype views
 doctype_js = {
 	"Quotation" : "tacten_vending_machine/client_scripts/quotation.js",
-	"Sales Invoice":"tacten_vending_machine/client_scripts/sales_invoice.js"
+	"Sales Invoice":"tacten_vending_machine/client_scripts/sales_invoice.js",
+	"Contract":"tacten_vending_machine/client_scripts/contract.js"
 }
 # doctype_list_js = {"doctype" : "public/js/doctype_list.js"}
 # doctype_tree_js = {"doctype" : "public/js/doctype_tree.js"}
