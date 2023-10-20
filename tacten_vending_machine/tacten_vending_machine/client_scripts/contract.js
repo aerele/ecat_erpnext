@@ -6,8 +6,10 @@ frappe.ui.form.on('Cup Definition', {
 				"Product Bundle Item" , {filters:{"parent":row.cup_name}, fields:['item_code','uom']}
 			).then((res) => {
                 let item_list = []
-                for(let item of frm.doc.custom_cup_constituents){
-                    item_list.push(item.constituent)
+                if(frm.doc.custom_cup_constituents){
+                    for(let item of frm.doc.custom_cup_constituents){
+                        item_list.push(item.constituent)
+                    }
                 }
                 for(var i = 0;i < res.length ; i++){
                     if(!in_list(item_list,res[i]["item_code"])){
