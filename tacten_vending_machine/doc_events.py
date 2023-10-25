@@ -332,6 +332,16 @@ def fetch_delivery_notes(doctype, txt, searchfield, start, page_len, filters, as
 			{"txt": ("%%%s%%" % txt)},
 			as_dict=as_dict,
 		)
-
-
-
+def on_validate_asset_cptzn(self,method):
+	for item in self.stock_items:
+		if item.item_code:
+			serial_nos = frappe.db.get_list("Serial No",{"item_code":item.item_code,"warehouse":item.warehouse,"status":"Active"},pluck = "serial_no",order_by="creation")
+			serial_str = ""
+			idx = item.stock_qty
+			item.serial_no = ""
+			for sr in serial_nos:
+				if idx == 0:
+					break
+				serial_str += sr+"\n"
+				idx -= 1
+			item.serial_no = serial_str

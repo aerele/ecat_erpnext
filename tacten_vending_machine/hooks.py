@@ -114,9 +114,9 @@ doctype_js = {
 # ---------------
 # Override standard doctype classes
 
-# override_doctype_class = {
-#	"ToDo": "custom_app.overrides.CustomToDo"
-# }
+override_doctype_class = {
+	"Asset Capitalization": "tacten_vending_machine.overrides.asset_capitalization.CustomAssetCapitalization"
+}
 
 # Document Events
 # ---------------
@@ -134,6 +134,9 @@ doc_events = {
 	},
 	"Sales Invoice":{
 		"before_save":"tacten_vending_machine.doc_events.si_before_save"
+	},
+	"Asset Capitalization":{
+		"validate":"tacten_vending_machine.doc_events.on_validate_asset_cptzn"
 	}
 }
 
