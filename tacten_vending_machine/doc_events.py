@@ -63,7 +63,11 @@ def qtn_before_save(self,method):
 		
 		if pl_doc:
 			self.selling_price_list = pl_doc
-
+	elif frappe.db.exists("Price List", self.party_name):
+		for item in self.items:
+			if item.item_code:
+				frappe.db.set_value("Item Price",{"price_list":self.party_name,"item_code":item.item_code,"selling":1,"customer":self.party_name,"currency":self.currency},"valid_from",self.transaction_date)
+				frappe.db.set_value("Item Price",{"price_list":self.party_name,"item_code":item.item_code,"selling":1,"customer":self.party_name,"currency":self.currency},"price_list_rate",item.rate)
 def po_before_save(self,method):
 	for item in self.items:
 		item.custom_tax_rate = 0
