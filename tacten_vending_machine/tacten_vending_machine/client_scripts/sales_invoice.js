@@ -50,79 +50,137 @@ frappe.ui.form.on('Sales Invoice', {
 	},
 	custom_contract:function(frm){
 		if(frm.doc.custom_contract){
-			frappe.db.get_list(
-				"Cup Definition" , {filters:{"parent":frm.doc.custom_contract,"parenttype":"Contract"}, fields:['cup_name','cup_rate']}
-			).then((res) => {
-				frm.doc.items = []
-				for(var i=0 ; i<res.length ; i++){
-					let row = frm.add_child("items");
-					row.item_code = res[i]["cup_name"]
-					row.qty = 0
-					row.rate = res[i]["cup_rate"]
-					frappe.call({
-						method: "erpnext.stock.get_item_details.get_item_details",
-						args:{
-							args: {
-							item_code: res[i]["cup_name"],
-							barcode: row.barcode,
-							serial_no: row.serial_no,
-							batch_no: row.batch_no,
-							set_warehouse: frm.doc.set_warehouse,
-							warehouse: row.warehouse,
-							customer: frm.doc.customer || frm.doc.party_name,
-							quotation_to: frm.doc.quotation_to,
-							supplier: frm.doc.supplier,
-							currency: frm.doc.currency,
-							conversion_rate: frm.doc.conversion_rate,
-							price_list: frm.doc.selling_price_list || frm.doc.buying_price_list,
-							price_list_currency: frm.doc.price_list_currency,
-							plc_conversion_rate: frm.doc.plc_conversion_rate,
-							company: frm.doc.company,
-							order_type: frm.doc.order_type,
-							is_pos: cint(frm.doc.is_pos),
-							is_return: cint(frm.doc.is_return),
-							is_subcontracted: frm.doc.is_subcontracted,
-							ignore_pricing_rule: frm.doc.ignore_pricing_rule,
-							doctype: frm.doc.doctype,
-							name: frm.doc.name,
-							project: row.project || frm.doc.project,
-							qty: row.qty || 1,
-							net_rate: row.rate,
-							stock_qty: row.stock_qty,
-							conversion_factor: row.conversion_factor,
-							weight_per_unit: row.weight_per_unit,
-							uom: row.uom,
-							weight_uom: row.weight_uom,
-							manufacturer: row.manufacturer,
-							stock_uom: row.stock_uom,
-							pos_profile: cint(frm.doc.is_pos) ? frm.doc.pos_profile : '',
-							cost_center: row.cost_center,
-							tax_category: frm.doc.tax_category,
-							item_tax_template: row.item_tax_template,
-							child_docname: row.name,
-							is_old_subcontracting_flow: frm.doc.is_old_subcontracting_flow
-							}
-						},
-						callback:function(r){
-							var item = r.message
-							row.item_name = item.item_name
-							row.description = item.description
-							row.uom = item.uom
-							row.income_account = item.income_account
-							row.expense_account = item.expense_account
-							row.warehouse = item.warehouse
-							row.batch_no = item.batch_no
+			frappe.db.get_list("Contract",{filters:{"name":frm.doc.custom_contract},fields:["custom_billing_type","custom_package_rate"]}).then((r)=>{
+				if(r && r[0]["custom_billing_type"] == "Cup Based Billing"){
+					frappe.db.get_list(
+						"Cup Definition" , {filters:{"parent":frm.doc.custom_contract,"parenttype":"Contract"}, fields:['cup_name','cup_rate']}
+					).then((res) => {
+						frm.doc.items = []
+						for(var i=0 ; i<res.length ; i++){
+							let row = frm.add_child("items");
+							row.item_code = res[i]["cup_name"]
+							row.qty = 0
+							row.rate = res[i]["cup_rate"]
+							auto_fill_item_details(frm, res[i]["cup_name"],row)
 						}
-					}
-					)
+						frm.refresh_field("items")
+					});
 				}
-				frm.refresh_field("items")
-			});
+				else if(r && r[0]["custom_billing_type"] == "Slab Based Billing"){
+					frm.doc.items = []
+					frappe.db.get_list(
+						"Quotation Item" , {filters:{"parent":frm.doc.custom_contract,"parenttype":"Contract"}, fields:['item_code','qty','gst_hsn_code','rate','amount']}
+					).then((qi) => {
+						for(var i=0 ; i<qi.length ; i++){
+							let row = frm.add_child("items");
+							row.item_code = qi[i]["item_code"]
+							row.qty = qi[i]["qty"]
+							row.rate = qi[i]["rate"]
+							row.gst_hsn_code = qi[i]['gst_hsn_code']
+							row.amount = qi[i]['amount']
+							auto_fill_item_details(frm,qi[i]["item_code"],row)
+						}
+
+					}).then(() => {
+						let row = frm.add_child("items");
+						row.item_code = "Vending Machine Rentals"
+						row.qty = 1
+						row.rate = 0
+						auto_fill_item_details(frm,"Vending Machine Rentals",row)
+
+					})
+					
+				}
+				else if(r && r[0]["custom_billing_type"] == "Package Based Billing"){
+					frappe.db.get_list(
+						"Package Definition"  , {filters:{"parent":frm.doc.custom_contract,"parenttype":"Contract"}, fields:['item','qty']}
+					).then((res) => {
+						frm.doc.items = []
+						for(var i=0 ; i<res.length ; i++){
+							let row = frm.add_child("items");
+							row.item_code = res[i]["item"]
+							row.qty = res[i]["qty"]
+							row.rate = 0
+							row.amount = 0
+							auto_fill_item_details(frm,res[i]["item"],row)
+							
+						}
+						let row = frm.add_child("items");
+						row.item_code = "Package Rental"
+						row.qty = 1
+						row.rate = r[0]["custom_package_rate"]
+						row.amount = row.qty * r[0]["custom_package_rate"]
+						auto_fill_item_details(frm,"Package Rental",row)
+						frm.refresh_field("items")
+					})
+				}
+			})
+			
 		}
 	},
 	
+	
 });
-
+function auto_fill_item_details(frm,item_name,row){
+	frappe.call({
+		method: "erpnext.stock.get_item_details.get_item_details",
+		args:{
+			args: {
+			item_code: item_name,
+			barcode: row.barcode,
+			serial_no: row.serial_no,
+			batch_no: row.batch_no,
+			set_warehouse: frm.doc.set_warehouse,
+			warehouse: row.warehouse,
+			customer: frm.doc.customer || frm.doc.party_name,
+			quotation_to: frm.doc.quotation_to,
+			supplier: frm.doc.supplier,
+			currency: frm.doc.currency,
+			conversion_rate: frm.doc.conversion_rate,
+			price_list: frm.doc.selling_price_list || frm.doc.buying_price_list,
+			price_list_currency: frm.doc.price_list_currency,
+			plc_conversion_rate: frm.doc.plc_conversion_rate,
+			company: frm.doc.company,
+			order_type: frm.doc.order_type,
+			is_pos: cint(frm.doc.is_pos),
+			is_return: cint(frm.doc.is_return),
+			is_subcontracted: frm.doc.is_subcontracted,
+			ignore_pricing_rule: frm.doc.ignore_pricing_rule,
+			doctype: frm.doc.doctype,
+			name: frm.doc.name,
+			project: row.project || frm.doc.project,
+			qty: row.qty || 1,
+			net_rate: row.rate,
+			stock_qty: row.stock_qty,
+			conversion_factor: row.conversion_factor,
+			weight_per_unit: row.weight_per_unit,
+			uom: row.uom,
+			weight_uom: row.weight_uom,
+			manufacturer: row.manufacturer,
+			stock_uom: row.stock_uom,
+			pos_profile: cint(frm.doc.is_pos) ? frm.doc.pos_profile : '',
+			cost_center: row.cost_center,
+			tax_category: frm.doc.tax_category,
+			item_tax_template: row.item_tax_template,
+			child_docname: row.name,
+			is_old_subcontracting_flow: frm.doc.is_old_subcontracting_flow
+			}
+		},
+		callback:function(r){
+			var item = r.message
+			row.item_name = item.item_name
+			row.description = item.description
+			row.uom = item.uom
+			row.gst_hsn_code = item.gst_hsn_code
+			row.income_account = item.income_account
+			row.expense_account = item.expense_account
+			row.warehouse = item.warehouse
+			row.batch_no = item.batch_no
+			frm.refresh_field("items")
+			
+		}
+	})
+}
 // frappe.ui.form.on("Sales Invoice Item",{
 // 	item_code(frm, cdt, cdn) {
 // 		debugger

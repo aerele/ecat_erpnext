@@ -84,21 +84,24 @@ def si_before_save(self,method):
 	contracts = self.custom_contract
 	# contracts = frappe.db.get_value("Contract",{"start_date":["<=",self.posting_date],"end_date":[">=",self.posting_date],"party_name":self.customer,"is_signed":1,"docstatus":1})
 	doc = frappe.get_doc("Contract",contracts)
+	cycle_day = 0
 	if not doc.custom_is_monthly_billing:
 		frappe.throw("Please set Monthly Billing period in Contract to bill")
-	if doc.custom_is_monthly_billing:
+	if doc.custom_is_monthly_billing or "End of the Month":
 		billing_cycle = doc.custom_monthly_billing_cycle
-		cycle_day = int(billing_cycle.split(" ")[1].replace("st","").replace("nd","").replace("rd","").replace("th",""))
 		year = datetime.strptime(self.posting_date, "%Y-%m-%d").year
 		month = datetime.strptime(self.posting_date, "%Y-%m-%d").month
+		if not billing_cycle == "End of the Month":
+			cycle_day = int(billing_cycle.split(" ")[1].replace("st","").replace("nd","").replace("rd","").replace("th",""))
+		else:
+			cycle_day = int(calendar.monthrange(year, month)[1])
 		end_date = get_date_of_day(year,month,cycle_day)
 		start_date = add_days(end_date,-29)
 		out_contract_dn = []
-		total_amt = machine_qty = 0
+		total_amt = 0
+		
 		for item in self.items:
-			if frappe.db.get_value("Item",{"name":item.item_code,"item_group":"Coffee Vending Machine"}):
-				machine_qty += item.qty
-			else:
+			if not item.item_code == "Vending Machine Rentals":
 				total_amt += item.amount
 			if item.delivery_note:
 				if frappe.db.get_value("Delivery Note",{"name":item.delivery_note,"posting_date":["<",start_date]}) or frappe.db.get_value("Delivery Note",{"name":item.delivery_note,"posting_date":[">",end_date]}):
@@ -106,45 +109,26 @@ def si_before_save(self,method):
 		if len(out_contract_dn):
 			frappe.throw("Invoice consists of Delivery Notes out of contract Period<br>{0}".format(", ".join(["<b>{0}</b>".format(f) for f in out_contract_dn])))
 	if doc.custom_billing_type == "Slab Based Billing":
-		rental_rate = orig_qty = is_in_range_full = is_out_range = is_in_range_partial= 0
-		for slab in doc.custom_slab_definitions:
-			if total_amt >= slab.consumable_amount:
-				
-				if (total_amt//slab.consumable_amount) >= machine_qty:
-					is_in_range_full = 1
-					orig_qty = machine_qty
-					rental_rate = slab.out_range_rent
-				else:
-					is_in_range_partial = 1
-					orig_qty = abs((total_amt//slab.consumable_amount)-machine_qty)
-					rental_rate_out = slab.out_range_rent
-					rental_rate_in = slab.in_range_rent
+		i = rent = 0
+		total_qty = frappe.db.sql('''select sum(no_of_vending_machines) as total_qty from `tabSlab Definition` where parent = '{0}' '''.format(doc.name),as_dict=1) or 0
+		if len(total_qty) and "total_qty" in total_qty[0]:
+			total_qty = total_qty[0]["total_qty"]
+		while total_qty>0 and i < len(doc.custom_slab_definitions):
+			st = doc.custom_slab_definitions[i]
+			avail_qty = total_amt // st.consumable_amount
+			if avail_qty >= st.no_of_vending_machines:
+				rent += st.no_of_vending_machines * st.in_range_rent
 			else:
-				is_out_range = 1
-				rental_rate = slab.in_range_rent
-				orig_qty = machine_qty
+				rent += (avail_qty * st.in_range_rent) + ((st.no_of_vending_machines - avail_qty)*st.out_range_rent)
+			total_qty -= st.no_of_vending_machines
+			i += 1
+			total_amt -= (st.no_of_vending_machines * st.consumable_amount)
+			if total_amt < 0:
+				total_amt = 0
 		for item in self.items:
-			if frappe.db.get_value("Item",{"name":item.item_code,"item_group":"Coffee Vending Machine"}):
-				if is_in_range_full:
-					item.qty = orig_qty
-					item.rate = rental_rate
-					item.amount = item.qty*rental_rate
-				elif is_out_range:
-					item.rate = rental_rate
-					item.amount = orig_qty*rental_rate
-				elif is_in_range_partial:
-					extra_row = item.as_dict()
-					item.qty = orig_qty
-					item.rate = rental_rate_in
-		if is_in_range_partial and orig_qty!=machine_qty:
-			del extra_row["name"]
-			del extra_row["modified"]
-			del extra_row["creation"]
-			del extra_row["idx"]
-			extra_row["qty"] = extra_row["qty"]-orig_qty
-			extra_row["rate"] = rental_rate_out
-			extra_row["amount"] = extra_row["qty"]*extra_row["rate"]
-			self.append("items",extra_row)
+			if item.item_code == "Vending Machine Rentals":
+				item.rate = rent
+				item.amount = item.qty * rent
 	elif doc.custom_billing_type == "Package Based Billing":
 		item_list = {}
 		total_amt = 0
