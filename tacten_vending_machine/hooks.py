@@ -27,7 +27,20 @@ app_license = "MIT"
 
 # include js in page
 # page_js = {"page" : "public/js/file.js"}
-
+fixtures = [
+	{
+		"dt": 'Item',
+		"filters": [
+			[
+				"name", "in",
+					[
+						"Vending Machine Rentals",
+						"Package Rental"
+					]
+			]
+		]
+	}
+]
 # include js in doctype views
 doctype_js = {
 	"Quotation" : "tacten_vending_machine/client_scripts/quotation.js",
@@ -144,9 +157,9 @@ doc_events = {
 # ---------------
 
 scheduler_events = {
-	"daily" : [
-		"tacten_vending_machine.doc_events.set_carry_fwd_qty_in_pkg"
-	]
+	# "daily" : [
+	# 	"tacten_vending_machine.doc_events.set_carry_fwd_qty_in_pkg"
+	# ]
 	# "all": [
 	# 	"tacten_vending_machine.tasks.all"
 	# ],

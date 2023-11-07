@@ -150,13 +150,13 @@ def si_before_save(self,method):
 				if item.item_group == "Coffee Vending Machine":
 					item.rate = doc.custom_noncompliance_rental_amount
 					item.amount = doc.custom_noncompliance_rental_amount*item.qty
-		if len(non_package_items):
-			frappe.msgprint("Invoice consists of non - package items:<br>{0}".format(", ".join(["<b>{0}</b>".format(f) for f in non_package_items])))
-		for contract in doc.custom_package_definition:
-			if contract.item in item_list and item_list[contract.item]["qty"] > (contract.qty+contract.carry_forwarded_qty):
-				extra_qty_items[contract.item] = {"additional_qty":item_list[contract.item]["qty"]-(contract.qty+contract.carry_forwarded_qty)}
-		if len(extra_qty_items):
-			frappe.msgprint("Invoice consists of items with additional package quantities:<br>{0}".format("<br>".join(["<b>{0}</b> - <b>{1} units</b>".format(f,extra_qty_items[f]["additional_qty"]) for f in extra_qty_items])))
+		# if len(non_package_items):
+		# 	frappe.msgprint("Invoice consists of non - package items:<br>{0}".format(", ".join(["<b>{0}</b>".format(f) for f in non_package_items])))
+		# for contract in doc.custom_package_definition:
+		# 	if contract.item in item_list and item_list[contract.item]["qty"] > (contract.qty+contract.carry_forwarded_qty):
+		# 		extra_qty_items[contract.item] = {"additional_qty":item_list[contract.item]["qty"]-(contract.qty+contract.carry_forwarded_qty)}
+		# if len(extra_qty_items):
+		# 	frappe.msgprint("Invoice consists of items with additional package quantities:<br>{0}".format("<br>".join(["<b>{0}</b> - <b>{1} units</b>".format(f,extra_qty_items[f]["additional_qty"]) for f in extra_qty_items])))
 	# elif doc.custom_billing_type == "Cup Based Billing":
 	# 	item_list = {}
 	# 	cup_items = frappe.db.get_list("Cup Definition" ,{"parent":doc.name},pluck="cup_name")
@@ -291,6 +291,7 @@ def fetch_delivery_notes(doctype, txt, searchfield, start, page_len, filters, as
 			as_dict=as_dict,
 		)
 	else:
+		print(cup_constituent)
 		return frappe.db.sql(
 			"""
 			select %(fields)s

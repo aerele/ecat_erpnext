@@ -21,7 +21,7 @@
    "options": "Item"
   },
   {
-   "columns": 3,
+   "columns": 4,
    "fetch_from": "item.item_name",
    "fieldname": "item_name",
    "fieldtype": "Data",
@@ -29,24 +29,23 @@
    "label": "Item Name"
   },
   {
-   "columns": 2,
+   "columns": 3,
    "fieldname": "qty",
    "fieldtype": "Float",
    "in_list_view": 1,
    "label": "Qty"
   },
   {
-   "columns": 2,
    "fieldname": "carry_forwarded_qty",
    "fieldtype": "Float",
-   "in_list_view": 1,
+   "hidden": 1,
    "label": "Carry Forwarded Qty"
   }
  ],
  "index_web_pages_for_search": 1,
  "istable": 1,
  "links": [],
- "modified": "2023-10-11 19:53:33.131020",
+ "modified": "2023-11-07 12:16:31.984482",
  "modified_by": "Administrator",
  "module": "Tacten Vending Machine",
  "name": "Package Definition",
