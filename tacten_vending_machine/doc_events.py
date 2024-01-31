@@ -3,15 +3,20 @@ import calendar
 from datetime import datetime
 from frappe.utils import (
 	add_days,
-	add_months
+	add_months,
+	today
 )
 from frappe.utils import today
 from erpnext.controllers.queries import get_fields
 from frappe.desk.reportview import get_filters_cond, get_match_cond
 from erpnext.accounts.doctype.sales_invoice.sales_invoice import SalesInvoice
+from erpnext.stock.doctype.delivery_note.delivery_note import make_sales_invoice
 def contract_before_save(self,method):
 	if self.document_type and self.document_name:
 		ref_doc = frappe.get_doc(self.document_type, self.document_name)
+		item_dict = {}
+		for item in self.custom_items:
+			item_dict[item.item_code] = item.is_rental
 		self.custom_items = []
 		for item in ref_doc.items:
 			new_item = {
@@ -22,7 +27,8 @@ def contract_before_save(self,method):
 				"rate": item.rate,
 				"amount": item.amount,
 				"uom": item.uom,
-				"conversion_factor": item.conversion_factor
+				"conversion_factor": item.conversion_factor,
+				"is_rental":item_dict[item.item_code] if item.item_code in item_dict else 0
 			}
 			self.append("custom_items", new_item)
 			
@@ -84,31 +90,32 @@ def si_before_save(self,method):
 	contracts = self.custom_contract
 	# contracts = frappe.db.get_value("Contract",{"start_date":["<=",self.posting_date],"end_date":[">=",self.posting_date],"party_name":self.customer,"is_signed":1,"docstatus":1})
 	doc = frappe.get_doc("Contract",contracts)
+	item_dict = {}
+	for item in doc.custom_items:
+		item_dict[item.item_code] = item.is_rental
 	cycle_day = 0
 	if not doc.custom_is_monthly_billing:
 		frappe.throw("Please set Monthly Billing period in Contract to bill")
-	if doc.custom_is_monthly_billing or "End of the Month":
-		billing_cycle = doc.custom_monthly_billing_cycle
-		year = datetime.strptime(self.posting_date, "%Y-%m-%d").year
-		month = datetime.strptime(self.posting_date, "%Y-%m-%d").month
-		if not billing_cycle == "End of the Month":
-			cycle_day = int(billing_cycle.split(" ")[1].replace("st","").replace("nd","").replace("rd","").replace("th",""))
-		else:
-			cycle_day = int(calendar.monthrange(year, month)[1])
-		end_date = get_date_of_day(year,month,cycle_day)
-		start_date = add_days(end_date,-29)
-		out_contract_dn = []
-		total_amt = 0
-		
+	billing_cycle = doc.custom_monthly_billing_cycle or "End of the Month"
+	year = datetime.strptime(self.posting_date, "%Y-%m-%d").year
+	month = datetime.strptime(self.posting_date, "%Y-%m-%d").month
+	if not billing_cycle == "End of the Month":
+		cycle_day = int(billing_cycle.split(" ")[1].replace("st","").replace("nd","").replace("rd","").replace("th",""))
+	else:
+		cycle_day = int(calendar.monthrange(year, month)[1])
+	end_date = get_date_of_day(year,month,cycle_day)
+	start_date = add_days(end_date,-29)
+	out_contract_dn = []
+	total_amt = 0
+	if len(out_contract_dn):
+		frappe.throw("Invoice consists of Delivery Notes out of contract Period<br>{0}".format(", ".join(["<b>{0}</b>".format(f) for f in out_contract_dn])))
+	if doc.custom_billing_type == "Slab Based Billing":
 		for item in self.items:
-			if not item.item_code == "Vending Machine Rentals":
+			if (not item.item_code == "Vending Machine Rentals") and item.item_code in item_dict and item_dict[item.item_code]:
 				total_amt += item.amount
 			if item.delivery_note:
 				if frappe.db.get_value("Delivery Note",{"name":item.delivery_note,"posting_date":["<",start_date]}) or frappe.db.get_value("Delivery Note",{"name":item.delivery_note,"posting_date":[">",end_date]}):
 					out_contract_dn.append(item.delivery_note)
-		if len(out_contract_dn):
-			frappe.throw("Invoice consists of Delivery Notes out of contract Period<br>{0}".format(", ".join(["<b>{0}</b>".format(f) for f in out_contract_dn])))
-	if doc.custom_billing_type == "Slab Based Billing":
 		i = rent = 0
 		total_qty = frappe.db.sql('''select sum(no_of_vending_machines) as total_qty from `tabSlab Definition` where parent = '{0}' '''.format(doc.name),as_dict=1) or 0
 		if len(total_qty) and "total_qty" in total_qty[0]:
@@ -131,25 +138,57 @@ def si_before_save(self,method):
 				item.amount = item.qty * rent
 	elif doc.custom_billing_type == "Package Based Billing":
 		item_list = {}
-		total_amt = 0
 		non_package_items = []
-		extra_qty_items = {}
-		package_items = frappe.db.get_list("Package Definition",{"parent":doc.name},pluck="item")
+		package_item_list = frappe.db.get_list("Package Definition",{"parent":doc.name},["item","qty"])
+		package_items = [i["item"] for i in package_item_list]
 		for item in self.items:
-			if not item.item_code in item_list and item.item_code in package_items:
-				item_list[item.item_code] = {"qty":item.qty,"amount":item.amount}
-				total_amt += item.amount
-			elif item.item_code in item_list and item.item_code in package_items:
+			if not item.item_code in item_list:
+				item_list[item.item_code] = {"qty":item.qty,"rate":item.rate}
+			elif item.item_code in item_list:
 				item_list[item.item_code]["qty"] += item.qty
-				item_list[item.item_code]["amount"] += item.amount
-				total_amt += item.amount
-			if item.item_code not in package_items and item.item_group!="Coffee Vending Machine":
+			if item.item_code not in package_items:
 				non_package_items.append(item.item_code)
-		if not total_amt >= doc.custom_package_rate:
-			for item in self.items:
-				if item.item_group == "Coffee Vending Machine":
-					item.rate = doc.custom_noncompliance_rental_amount
-					item.amount = doc.custom_noncompliance_rental_amount*item.qty
+		f = 0
+		self.items = []
+		for item in package_item_list:
+			if item["item"] in item_list:
+				if item_list[item["item"]]["qty"] < item["qty"]:
+					self.append("items",{
+						"item_code":item["item"],
+						"qty":item_list[item["item"]]["qty"],
+						"rate":item_list[item["item"]]["rate"]
+					})
+					f = 1
+				elif item_list[item["item"]]["qty"] > item["qty"]:
+					self.append("items",{
+						"item_code":item["item"],
+						"qty":item_list[item["item"]]["qty"] - item["qty"],
+						"rate":item_list[item["item"]]["rate"]
+					})
+		rate = 0
+		for item in non_package_items:
+			if item in item_list:
+				rate = item_list[item]["rate"]
+				for row in doc.custom_items:
+					if item == row.item_code:
+						self.append("items",{
+							"item_code":item,
+							"qty":item_list[item]["qty"],
+							"rate":row.rate
+						})
+					else:
+						self.append("items",{
+							"item_code":item,
+							"qty":item_list[item]["qty"],
+							"rate":rate
+						})
+
+
+		# if not total_amt >= doc.custom_package_rate:
+		# 	for item in self.items:
+		# 		if item.item_group == "Coffee Vending Machine":
+		# 			item.rate = doc.custom_noncompliance_rental_amount
+		# 			item.amount = doc.custom_noncompliance_rental_amount*item.qty
 		# if len(non_package_items):
 		# 	frappe.msgprint("Invoice consists of non - package items:<br>{0}".format(", ".join(["<b>{0}</b>".format(f) for f in non_package_items])))
 		# for contract in doc.custom_package_definition:
@@ -239,7 +278,7 @@ def set_carry_fwd_qty_in_pkg():
 
 @frappe.whitelist()
 @frappe.validate_and_sanitize_search_inputs
-def fetch_delivery_notes(doctype, txt, searchfield, start, page_len, filters, as_dict):
+def fetch_delivery_notes(doctype=None, txt=None, searchfield=None, start=None, page_len=None, filters=None, as_dict=False):
 	doctype = "Delivery Note"
 	flag = 0
 	conditions = ""
@@ -254,8 +293,10 @@ def fetch_delivery_notes(doctype, txt, searchfield, start, page_len, filters, as
 		start_date = add_days(end_date,-29)
 		del filters["contract"] 
 		del filters["posting_date"]
-		if start_date and end_date:
+		if start_date and end_date and (("all_open_items"  not in filters) or (not filters["all_open_items"])):
 			conditions += "and `tabDelivery Note`.posting_date >= '{0}' and `tabDelivery Note`.posting_date <= '{1}' ".format(start_date,end_date)
+		if "all_open_items" in filters:
+			del filters["all_open_items"]
 		if doc.custom_billing_type == "Cup Based Billing":
 			cup_constituent = frappe.db.get_list("Cup Constituents",{"parent":doc.name},pluck="constituent")
 			flag = 1
@@ -291,7 +332,6 @@ def fetch_delivery_notes(doctype, txt, searchfield, start, page_len, filters, as
 			as_dict=as_dict,
 		)
 	else:
-		print(cup_constituent)
 		return frappe.db.sql(
 			"""
 			select %(fields)s
@@ -334,3 +374,66 @@ def on_validate_asset_cptzn(self,method):
 				serial_str += sr+"\n"
 				idx -= 1
 			item.serial_no = serial_str
+
+def on_save_dn(self, method):
+	if not frappe.db.get_value("Contract",{"party_name":self.customer,"is_signed":1,"custom_invoice_with_dn":1}):
+		return
+	frappe.msgprint("Customer <b>{0}</b> is eligible for Invoicing with Consumable delivery".format(self.customer))
+
+def autobill_invoice():
+	contracts = frappe.get_list("Contract",{"is_signed":1,"custom_is_monthly_billing":1,"custom_enable_autobilling":1,"status":"Active"},pluck = "name")
+	print(contracts)
+	for name in contracts[0:1]:
+		doc = frappe.get_doc("Contract",name)
+		billing_cycle = doc.custom_monthly_billing_cycle or "End of the Month"
+		year = datetime.strptime(today(), "%Y-%m-%d").year
+		month = datetime.strptime(today(), "%Y-%m-%d").month
+		if not billing_cycle == "End of the Month":
+			cycle_day = int(billing_cycle.split(" ")[1].replace("st","").replace("nd","").replace("rd","").replace("th",""))
+		else:
+			cycle_day = int(calendar.monthrange(year, month)[1])
+		end_date = get_date_of_day(year,month,cycle_day)
+		if end_date == today():
+			new_doc = frappe.new_doc("Sales Invoice")
+			new_doc.customer = doc.party_name
+			new_doc.posting_date = today()
+			new_doc.custom_contract = doc.name
+			filters = {
+				"docstatus": 1,
+				"company": new_doc.company,
+				"posting_date":today(),
+				"contract":doc.name,
+				"all_open_items":0,
+				"is_return": 0,
+				"customer":doc.party_name
+			}
+			dns = fetch_delivery_notes(doctype="Delivery Note",txt="",searchfield="name",start=0,page_len=25,filters=filters,as_dict=True)
+			dn_items = frappe.db.sql('''select item_code,qty,rate,amount from `tabDelivery Note Item` where parent in ({0})'''.format(",".join(["'{0}'".format(i["name"]) for i in dns])),as_dict = 1)
+			for row in dn_items:
+				new_doc.append("items",row)
+			if doc.custom_billing_type == "Package Based Billing":
+				print("true")
+				new_doc.append("items",{
+					"item_code":"Package Rental",
+					"qty":1,
+					"rate":doc.custom_package_rate
+				})
+			elif doc.custom_billing_type == "Slab Based Billing":
+				new_doc.append("items",{
+					"item_code":"Vending Machine Rentals",
+					"qty":1,
+					"rate":0
+				})
+			elif doc.custom_billing_type == "Cup Based Billing":
+				for item in doc.custom_cup_definitions:
+					new_doc.append("items",{
+						"item_code":item.cup_name,
+						"qty":1,
+						"rate":item.cup_rate
+					})
+			new_doc.save(ignore_permissions = True)
+			# print('''select item_code,qty,rate,amount from `tabDelivery Note Item` where parent in ({0})'''.format(",".join(["'{0}'".format(i["name"]) for i in dns])))
+
+
+		
+

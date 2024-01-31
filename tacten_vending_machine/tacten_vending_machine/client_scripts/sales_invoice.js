@@ -34,6 +34,7 @@ frappe.ui.form.on('Sales Invoice', {
 							company: me.frm.doc.company,
 							posting_date:me.frm.doc.posting_date,
 							contract:me.frm.doc.custom_contract,
+							all_open_items:frm.doc.custom_show_all_open_items,
 							is_return: 0
 						};
 						if(me.frm.doc.customer) filters["customer"] = me.frm.doc.customer;
@@ -69,17 +70,16 @@ frappe.ui.form.on('Sales Invoice', {
 				else if(r && r[0]["custom_billing_type"] == "Slab Based Billing"){
 					frm.doc.items = []
 					frappe.db.get_list(
-						"Quotation Item" , {filters:{"parent":frm.doc.custom_contract,"parenttype":"Contract"}, fields:['item_code','qty','gst_hsn_code','rate','amount']}
+						"Qtn Contract Items" , {filters:{"parent":frm.doc.custom_contract,"parenttype":"Contract"}, fields:['item_code','qty','rate','amount']}
 					).then((qi) => {
-						for(var i=0 ; i<qi.length ; i++){
-							let row = frm.add_child("items");
-							row.item_code = qi[i]["item_code"]
-							row.qty = qi[i]["qty"]
-							row.rate = qi[i]["rate"]
-							row.gst_hsn_code = qi[i]['gst_hsn_code']
-							row.amount = qi[i]['amount']
-							auto_fill_item_details(frm,qi[i]["item_code"],row)
-						}
+						// for(var i=0 ; i<qi.length ; i++){
+						// 	let row = frm.add_child("items");
+						// 	row.item_code = qi[i]["item_code"]
+						// 	row.qty = qi[i]["qty"]
+						// 	row.rate = qi[i]["rate"]
+						// 	row.amount = qi[i]['amount']
+						// 	auto_fill_item_details(frm,qi[i]["item_code"],row)
+						// }
 
 					}).then(() => {
 						let row = frm.add_child("items");
@@ -96,15 +96,15 @@ frappe.ui.form.on('Sales Invoice', {
 						"Package Definition"  , {filters:{"parent":frm.doc.custom_contract,"parenttype":"Contract"}, fields:['item','qty']}
 					).then((res) => {
 						frm.doc.items = []
-						for(var i=0 ; i<res.length ; i++){
-							let row = frm.add_child("items");
-							row.item_code = res[i]["item"]
-							row.qty = res[i]["qty"]
-							row.rate = 0
-							row.amount = 0
-							auto_fill_item_details(frm,res[i]["item"],row)
+					// 	for(var i=0 ; i<res.length ; i++){
+					// 		let row = frm.add_child("items");
+					// 		row.item_code = res[i]["item"]
+					// 		row.qty = res[i]["qty"]
+					// 		row.rate = 0
+					// 		row.amount = 0
+					// 		auto_fill_item_details(frm,res[i]["item"],row)
 							
-						}
+					// 	}
 						let row = frm.add_child("items");
 						row.item_code = "Package Rental"
 						row.qty = 1

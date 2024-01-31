@@ -1,7 +1,7 @@
 from . import __version__ as app_version
 
 app_name = "tacten_vending_machine"
-app_title = "Tacten Vending Machine"
+app_title = "Ecat Kaapicat"
 app_publisher = "Aerele Technologies"
 app_description = "Manufactures Vending Machines and deploy it to customer sites"
 app_email = "hello@aerele.in"
@@ -150,6 +150,9 @@ doc_events = {
 	},
 	"Asset Capitalization":{
 		"validate":"tacten_vending_machine.doc_events.on_validate_asset_cptzn"
+	},
+    "Delivery Note":{
+        "validate":"tacten_vending_machine.doc_events.on_save_dn"
 	}
 }
 
@@ -157,9 +160,9 @@ doc_events = {
 # ---------------
 
 scheduler_events = {
-	# "daily" : [
-	# 	"tacten_vending_machine.doc_events.set_carry_fwd_qty_in_pkg"
-	# ]
+	"daily" : [
+		"tacten_vending_machine.doc_events.autobill_invoice"
+	]
 	# "all": [
 	# 	"tacten_vending_machine.tasks.all"
 	# ],
